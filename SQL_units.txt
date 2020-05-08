@@ -1,0 +1,659 @@
+-- -- 1. Основы SQL -- -- 
+-----------------------------------------------------------------------------------------------------------------
+-- пример простейшего запроса
+
+select
+    author,
+    book_name
+from
+    books
+where publishing_year between 1950 and 2000 
+order by book_ratings_count desc
+offset 10
+
+-- -- 2. Агрегатные функции -- --
+-- GROUP BY, ORDER BY, HAVING, OFFSET, LIMIT
+-----------------------------------------------------------------------------------------------------------------
+select
+    author,
+    genre,
+    avg(book_average_rating) average_rating
+from books
+group by 1, 2 
+order by 3 desc, 1, 2
+offset 2
+limit 6
+-------------------------------------------------
+select 
+    author, 
+    count(distinct publisher) count_publisher, 
+    sum(book_ratings_count) sum_count_rating, 
+    avg(book_average_rating) average_rating, 
+    min(publishing_year), 
+    max(publishing_year)
+from books
+where publishing_year > 1930
+group by author
+having count(distinct publisher) > 1
+    and max(publishing_year) > 1950
+
+-- -- 3. Связи таблиц -- --
+-- INFORMATION_SCHEMA information_schema.TABLE_CONSTRAINTS
+-----------------------------------------------------------------------------------------------------------------
+------------------------------------------------- 
+-- Схемы данных
+select 
+	t.table_schema,
+	t.table_name
+from 
+	information_schema.tables t
+where 
+	t.table_schema = 'shipping'
+-------------------------------------------------
+-- запрос, который выведет самый частый тип в таблицах схемы public
+select 
+    c.data_type
+from 
+	information_schema.columns c
+where 
+	c.table_schema = 'public'
+group by 1 
+order by count(c.data_type) desc
+limit 1
+------------------------------------------------- 
+-------------------------------------------------
+-- запрос, который выведет количество таблиц в схеме shipping, в которых есть столбцы типа numeric
+select 
+    count(distinct c.table_name)
+from 
+	information_schema.columns c
+where 
+	c.table_schema = 'shipping'
+	and c.data_type = 'numeric'
+-------------------------------------------------
+-- запрос, который выведет количество таблиц с первичными ключами в схеме public
+select 
+	count(c.table_name)
+from 
+	information_schema.table_constraints c
+where 
+	c.table_schema = 'public'
+	and c.constraint_type in ('PRIMARY KEY')
+
+
+-- -- 4. Соединения таблиц -- --
+-- JOIN, OUTER JOIN, LEFT JOIN, RIGHT JOIN, FULL JOIN, CROSS JOIN
+-----------------------------------------------------------------------------------------------------------------
+select 
+	* --раздел select остается неизменным
+from 
+	information_schema."tables" t -- указываем первую таблицу, не забываем дать alias
+		join information_schema.columns c -- пишем join на вторую таблицу 
+			on t.table_name = c.table_name 
+			and t.table_schema = c.table_schema 
+-- в разделе ON пишем логическое условие любой сложности
+-------------------------------------------------
+-- запрос, который выдает сводную статистику по городам: количество клиентов, заказов и водителей. Оставьте города, 
+-- в которых хотя бы один из этих показателей ненулевой, и отсортируйте по первому столбцу
+select
+    c.city_name,
+    count(distinct t.cust_id),
+    count(distinct s.ship_id),
+    count(distinct d.driver_id)
+from shipping.city c
+    	left join shipping.shipment s on c.city_id=s.city_id
+    		left join shipping.driver d on c.city_id=d.city_id
+    			left join shipping.customer t on c.city_id=t.city_id
+group by
+    c.city_name
+having
+    count(distinct t.cust_id)>0 or
+    count(distinct s.ship_id)>0 or
+    count(distinct d.driver_id)>0
+order by
+    c.city_name
+-------------------------------------------------
+-- запрос, который выводит все возможные уникальные пары даты доставки и имени водителя, упорядоченные по дате и имени по возрастанию
+select
+    s.ship_date,
+    d.first_name
+from    
+    shipping.shipment s 
+        cross join shipping.driver d
+
+
+-- -- 5. Сложные объединения -- -- 
+-- UNION ALL, EXCEPT, INTERSECT
+-----------------------------------------------------------------------------------------------------------------
+------------------------------------------------- 
+-- запрос, который создает уникальный алфавитный справочник всех городов, штатов, имен водителей и производителей грузовиков
+select
+    distinct c.city_name,
+    'city'
+from shipping.city c 
+union all
+select
+    distinct c.state,
+    'state'
+from shipping.city c 
+union all
+select
+    distinct d.first_name,
+    'driver'
+from shipping.driver d
+union all
+select
+    distinct t.make,
+    'truck'
+from shipping.truck t
+-------------------------------------------------
+-- UNION может быть использован только в случае полного соответствия столбцов и их типов в объединяемых запросах
+-- запрос, который объединит в себе все почтовые индексы водителей и их телефоны в единый столбец-справочник. 
+-- также добавьте столбец с именем водителя и столбец с типом контакта ('phone' или 'zip' в зависимости от типа)
+select
+    d.zip_code::text req,
+    d.first_name driver_name,
+    'zip'
+from shipping.driver d  
+union all
+select
+    d.phone::text req,
+    d.first_name driver_name,
+    'phone'
+from shipping.driver d 
+------------------------------------------------- 
+-- UNION ALL и промежуточные итоги
+-- запрос, который выводит общее число доставок ('total_shippings'), а также количество доставок в каждый день
+select
+    'total_shippings' date_period,
+    count(s.ship_id) cnt_shipping
+from shipping.shipment s 
+union all
+select
+    s.ship_date::text date_period,
+    count(s.ship_id) cnt_shipping
+from shipping.shipment s
+group by 1
+------------------------------------------------- 
+-------------------------------------------------
+-- UNION можно использовать для создания справочников прямо в коде запроса
+select 'a'::text letter,'1' ordinal_position
+union 
+select 'b','2' ordinal_position
+union 
+select 'c','3' ordinal_position
+------------------------------------------------- 
+-------------------------------------------------
+-- Оператор EXCEPT убирает из результата query_1 все кортежи, совпавшие с результатом выполнения query_2
+query 1 
+except 
+query 2
+------------------------------------------------- 
+-------------------------------------------------
+-- Оператор INTERSECT оставляет из результатов query_1 все кортежи, совпавшие с результатом выполнения query_2
+query 1 
+INTERSECT
+query 2
+
+-- -- 6. Подзапросы -- -- 
+-- EXISTS, IN, SELECT FROM SELECT, Common Table Expressions (CTE)
+-----------------------------------------------------------------------------------------------------------------
+------------------------------------------------- 
+-- EXISTS возвращает true, если результатом запроса является хотя бы одна строка, и false, если не существует ни одной.
+select
+	distinct state
+from 
+	shipping.city c
+where 
+	exists 
+			(
+				select 
+					*
+				from 
+					shipping.shipment s 
+				where 
+					s.city_id = c.city_id
+				)
+order by 1
+-------------------------------------------------
+-- запрос, который выводит все схемы и названия таблиц в базе, в которых нет первичных ключей.
+select 
+    t.table_schema,
+    t.table_name
+from information_schema.tables t
+where not exists (
+                select c.*
+                from information_schema.table_constraints c 
+                where c.constraint_type in ('PRIMARY KEY')
+                    and c.table_schema = t.table_schema
+                    and c.table_name = t.table_name
+                    )
+-------------------------------------------------
+-- запрос, который выводит названия всех городов и булевы поля, показывающие наличие клиентов, наличие водителей и наличие доставок в этом городе
+select
+    c.city_name,
+    exists(
+            select *
+            from shipping.customer cs 
+            where cs.city_id = c.city_id
+                ) cust,
+    exists(
+            select *
+            from shipping.driver d 
+            where d.city_id = c.city_id
+                ) driv,
+    exists(
+            select *
+            from shipping.shipment s 
+            where s.city_id = c.city_id
+                ) ship
+from shipping.city c 
+-------------------------------------------------
+-- фильтрация значения в конкретном столбце, используя предикат IN
+-- запрос, который выводит все поля из таблицы доставок по водителям, совершившим более 90 доставок
+select *
+from shipping.shipment s
+where s.driver_id in (
+                    select ss.driver_id
+                    from shipping.shipment ss
+                    group by 1 
+                    having count(ss.ship_id) > 90
+                        )
+------------------------------------------------- 
+-------------------------------------------------
+-- SELECT FROM SELECT
+-- вложенный запрос
+select 
+	avg(a.avg_weight) avg_avg_weight
+from 
+	(
+	select 
+		s.driver_id,
+		avg(s.weight)avg_weight
+	from 
+		shipping.shipment s
+	group by 1
+	) a
+------------------------------------------------- 
+-------------------------------------------------
+-- Common Table Expressions (CTE)
+-- пример создания справочника запросом CTE  и использование в дальнейшем запросе
+with chef as(
+    select
+        'Paolo Lorenzo' chef_name,
+        '1900-01-01'::date date_start,
+        '2017-01-31'::date date_stop
+    union
+    select
+        'Nicco Lorenzo' chef_name,
+        '2017-02-01'::date date_start,
+        '2020-12-31'::date date_stop
+    )
+select 
+    chef_name,
+    count(s.ship_id) count_ship, 
+    count(distinct s.driver_id) count_driver, 
+    count(distinct cust_id) count_cust, 
+    sum(s.weight) sum_weight
+from shipping.shipment s 
+    left join chef on s.ship_date >= chef.date_start and s.ship_date <= date_stop
+group by 1
+order by 1 
+
+
+-- -- 7. Условные операторы  -- --
+-- CASE, COALESCE, NULLIF, GREATEST/LEAST
+------------------------------------------------- 
+-----------------------------------------------------------------------------------------------------------------
+-- Для добавления своей логики вычисления в запросах существует оператор CASE. Он схож по синтаксису с 
+-- оператором IF в других языках и позволяет в зависимости от условий использовать то или иное значение. 
+-- Его синтаксис:
+CASE WHEN условие THEN результат
+     [WHEN ...]
+     [ELSE результат]
+END
+-- Использовать его можно во всех известных нам конструкциях — SELECT, JOIN ON, WHERE, GROUP BY, ORDER BY, 
+-- внутри оконных и агрегатных функций.
+------------------------------------------------- 
+-- запрос, который посчитает среднюю (по штату) массу доставки. Используя его как подзапрос, выведите название 
+-- штата, категорию доставок, где масса больше ('more'), масса меньше ('less'), равна('equal') или не заполнено 
+-- ('null'), а также количество таких доставок. Штаты без доставок выводить не нужно. Отсортируйте по первому и 
+-- второму столбцу.
+-- Столбцы в выдаче:
+-- * state — название штата;
+-- * category — категория доставок (текстовый столбец, значения 'more','less','equal','no_value');
+-- * qty — количество доставок.
+with av as(
+        select
+            c.state,
+            avg(s.weight) avg_weight -- средняя (по штату) массу доставки
+        from
+            shipping.shipment s 
+                left join shipping.city c on c.city_id = s.city_id
+        group by 1)
+select
+    c.state, -- название штата;
+    case
+        when s.weight > av.avg_weight then 'more'
+        when s.weight < av.avg_weight then 'less'
+        when s.weight = av.avg_weight then 'equal'
+        else null
+    end category, -- категория доставок (текстовый столбец, значения 'more','less','equal','no_value');
+    count(s.ship_id) qty -- количество доставок
+from
+    shipping.shipment s 
+        left join shipping.city c on c.city_id = s.city_id
+            left join av on av.state = c.state
+group by 1, 2
+order by 1, 2
+------------------------------------------------- 
+-- подсчитывает количество столбцов с численным типом данных в схеме shipping
+select
+    c.table_name, -- название таблицы;
+    count(
+        case
+            when c.data_type in ('integer','numeric','bigint') then 1
+        end)/count(c.*)::numeric numbers_ratio -- доля численных столбцов
+from
+    information_schema.columns c
+where
+    c.table_schema = 'shipping'
+group by 1
+order by 2 desc
+-- Упрощенный синтаксис CASE
+CASE выражение
+    WHEN значение THEN результат
+    [WHEN ...]
+    [ELSE результат]
+END
+------------------------------------------------- 
+-- в примере, в зависимости от значения столбца data type выводим его название
+select 
+    case c.data_type 
+        when 'integer' then 'целое число'
+        when 'text'  then 'текст'
+        else 'другой'
+    end data_type,
+    count(*)
+from 
+    information_schema.columns c
+where 
+    c.table_schema = 'shipping'
+group by 1
+------------------------------------------------- 
+------------------------------------------------- 
+-- Функция COALESCE возвращает первое ненулевое выражение из списка.
+-- Если все выражения определены как NULL, то функция COALESCE вернет NULL
+CASE WHEN параметр_1 IS NOT NULL THEN параметр_1 
+     [WHEN параметр_i IS NOT NULL THEN параметр_i]
+     ELSE NULL
+END
+------------------------------------------------- 
+-- запрос, который выведет название всех столбцов в схеме shipping и столбец size, вычисляемый следующим образом:
+-- * максимально возможный размер в октетах (байтах), если он заполнен;
+-- * если нет, то точность (объявленную или неявную) типа для целевого столбца;
+-- * если и она не заполнена, то выведите 0
+select 
+    c.column_name,
+    coalesce(c.character_octet_length, c.numeric_precision, 0) size 
+from
+    information_schema.columns c
+where c.table_schema = 'shipping'
+order by 1
+------------------------------------------------- 
+------------------------------------------------- 
+-- Функция NULLIF схожа с обратной реализацией COALESCE
+-- NULLIF возвращает значение NULL, если значение1 равно значение2; в противном случае она возвращает значение1
+-- если отсутствие значения в базе данных закодировано отличным от NULL образом,
+-- * например в колонке с числом пишется -1.
+select NULLIF(<имя колонки>, -1)
+-- * также удобно использовать NULLIF если необходимо произвести деление на выражение, результатом которого является 0:
+select 10/NULLIF(0, 0)
+-- Запрос не вернет ошибки деления на 0, а выдаст NULL
+------------------------------------------------- 
+------------------------------------------------- 
+-- Функции GREATEST и LEAST выбирают соответственно наибольшее или наименьшее значение из списка выражений
+GREATEST(значение [,значение2 ...])
+LEAST(значение [,значение2 ...])
+-- запрос, который выводит число доставок по кажому производителю грузовиков, а также наименьшее и наибольшее среди них
+with a as(
+        select
+            t.make,
+            s.ship_id 
+        from shipping.shipment s 
+            left join shipping.truck t on s.truck_id = t.truck_id
+            )
+select 
+    count(case when a.make = 'Kenworth' then a.ship_id end) Kenworth, -- кол-во доставок машинами Kenworth;
+    count(case 'Mack' when a.make then a.ship_id end) Mack, -- кол-во доставок машинами Mack;
+    count(case 'Peterbilt' when a.make then a.ship_id end) Peterbilt, -- кол-во доставок машинами Peterbilt;
+    GREATEST(count(case when a.make = 'Kenworth' then a.ship_id end),
+        count(case 'Mack' when a.make then a.ship_id end),
+        count(case 'Peterbilt' when a.make then a.ship_id end)) maximum, -- наибольшее число доставок на производителя;
+    LEAST(count(case when a.make = 'Kenworth' then a.ship_id end),
+        count(case 'Mack' when a.make then a.ship_id end),
+        count(case 'Peterbilt' when a.make then a.ship_id end)) minimum -- наименьшее число доставок на производителя*/
+from a
+
+
+-- -- 8. Функции работы с типами данных  -- --
+-- Timestamp, Date, Interval, EXTRACT, Time, TO_CHAR, DATE_TRUNC, character , character varying, text,
+-- UPPER/LOWER, REPLACE, LEFT, RIGHT
+------------------------------------------------- 
+-----------------------------------------------------------------------------------------------------------------
+select now() at time zone 'Europe/Moscow'
+-- выведите дату в ts в Московском часовом поясе и в поясе UTC
+with x as ( select '2018-12-31 21:00:00+00'::timestamp with time zone ts )
+select 
+    (ts at time zone 'Europe/Moscow')::date dt_msk, -- дата в московском часовом поясе
+    ts::date dt_utc -- дата в UTC
+from x
+------------------------------------------------- 
+------------------------------------------------- 
+-- Интервалы хранят данные в трёх отдельных полях: месяцах, днях, секундах. 
+
+------------------------------------------------- 
+------------------------------------------------- 
+-- EXTRACT ([century day decade dow doy epoch hour isodow isoyear month] from [...])
+SELECT EXTRACT(CENTURY FROM TIMESTAMP '2000-12-16 12:21:13');
+Результат:20
+SELECT EXTRACT(CENTURY FROM TIMESTAMP '2001-02-16 20:38:40');
+Результат:21
+------------------------------------------------- 
+------------------------------------------------- 
+-- справочник всех возможных часовых поясов
+select
+    tz.name, -- название часового пояса,
+    extract('hour' from '21:00'::time at time zone tz.name) as hour -- номер часа, целое число, например по умолчанию 21
+from pg_timezone_names tz 
+order by 1 
+------------------------------------------------- 
+-------------------------------------------------
+-- TO_CHAR форматирование даты и времени 
+select to_char(now() at time zone 'Europe/Moscow','"Точное время "HH24" часов "MI" минут "SS" секунд"')
+------------------------------------------------- 
+-------------------------------------------------
+-- DATE_TRUNC позволяет отсечь заданное время, дату или дату со временем до нужной точности. Формат вызова: date_trunc('поле', значение)
+date_trunc('quarter', s.ship_date)::date q, -- начало квартала, тип date
+------------------------------------------------- 
+-------------------------------------------------
+-- * character — строка фиксированной длины, дополненная пробелами/ в столбце character(5) будет всегда 5 символов
+-- * character varying — строка ограниченной переменной длины/ в столбце типа character varying(5) нельзя будет хранить строку большей длины
+-- * text — строка неограниченной длины
+------------------------------------------------- 
+-------------------------------------------------
+-- пример объединения строк
+select 
+    'Ваш заказ доставит водитель '||d.first_name||' '||d.last_name||'. Его контактный номер: '||coalesce(d.phone, '-') msg
+from shipping.driver d
+------------------------------------------------- 
+-------------------------------------------------
+-- UPPER/LOWER перевод регистров
+select upper('Abc') s1 ,lower('xYz') s2
+------------------------------------------------- 
+-------------------------------------------------
+-- REPLACE замена значения в строках
+select replace('малако','а','о')
+------------------------------------------------- 
+-------------------------------------------------
+-- LEFT, RIGHT обрезка строк
+-- left(string,n) и right(string,n) 
+select left('0123456789', - 2), right('0123456789', - 2)
+------------------------------------------------- 
+-------------------------------------------------
+-- FORMAT форматирование строк
+select format('driver_id = %s, first_name = %s, last_name = %s, address = %s, zip_code = %s, phone = %s, city_id = %s', driver_id, first_name, last_name, address, zip_code, phone, city_id) from shipping.driver d
+
+
+
+-- -- 9. Оконные функции  -- -- 
+-- ROW_NUMBER, RANK, DENSE_RANK, LEAD/LAG
+------------------------------------------------- 
+-----------------------------------------------------------------------------------------------------------------
+-- ранжирование строки после сртировки
+select 
+	c.city_name,
+	c.state,
+	row_number()over (order by c.city_name),
+	rank()over (order by c.city_name),
+	dense_rank() over(order by c.city_name)
+from shipping.city c
+order by 1
+------------------------------------------------- 
+-- запрос нумерует уникальными числами всех клиентов, отсортировав по столбцу с номером по возрастанию
+select 
+    c.cust_id, -- id клиента
+    c.cust_name, -- имя клиента
+    row_number() over(order by c.cust_name desc ) num -- порядковый номер
+from shipping.customer c
+order by 3
+------------------------------------------------- 
+-- запрос ранжирует все заказы для каждого клиента по массе груза по убыванию, и выбирает 3 самых тяжелых из них
+with t as 
+    (
+    select
+        s.cust_id,
+        s.ship_id,
+        s.weight,
+        row_number() over(partition by s.cust_id order by s.weight desc ) weight_number
+    from shipping.shipment s
+        )
+select 
+    t.cust_id,
+    t.ship_id,
+    t.weight,
+    t.weight_number
+from t
+where t.weight_number <= 3
+order by 1, 4
+------------------------------------------------- 
+------------------------------------------------- 
+-- конструкция window позволяет многократно использовать заданное условие в разых запросах
+select 
+	c.city_name,
+	c.state,
+	row_number() over my_window,
+	rank()over my_window,
+	dense_rank() over my_window
+from shipping.city c
+window my_window as ( partition by c.state order by c.city_name)
+order by c.state,c.city_name
+------------------------------------------------- 
+------------------------------------------------- 
+-- эквивалентные запросы:
+-- * с агрегатной функцией
+select 
+	date_trunc('month', s.ship_date) mn,
+	count(*) qty
+from shipping.shipment s
+group by 1
+order by 1
+-- * с оконной функцией
+-- !!! использование distinct обязательно
+select distinct 
+	date_trunc('month', s.ship_date) mn,
+	count(*) over (partition by date_trunc('month', s.ship_date))qty
+from shipping.shipment s
+order by 1
+------------------------------------------------- 
+-- запрос, который выведет трех лидеров и трех аутсайдеров по выручке, их количество доставок и средний вес доставки
+with custs as (select 
+    cust_id,
+    cust_name,
+    annual_revenue,
+    row_number () over (order by annual_revenue) row_asc,
+    row_number () over (order by annual_revenue desc) row_desc
+from shipping.customer)
+select
+    distinct
+    cust_name,
+    annual_revenue,
+    count (*) over (partition by s.cust_id),
+    avg (s.weight) over (partition by s.cust_id)
+from shipping.shipment s
+    left join custs c on s.cust_id = c.cust_id
+where
+    row_desc <=3 or row_asc <=3
+order by 2 desc
+------------------------------------------------- 
+------------------------------------------------- 
+-- Накопленные значения
+-- пример
+select 
+	distinct 
+		date_trunc('month',ship_date) mn,
+		count(*) over (order by date_trunc('month',ship_date) ) shipments_cumulative
+from shipping.shipment
+order by 1
+------------------------------------------------- 
+------------------------------------------------- 
+-- Расчет конверсии
+-- конверсия из события view в событие addtocart
+select	
+	date_trunc('month',el.event_datetime) mn,
+	count(distinct case when el.event_name = 'addtocart' then el.client_id end)*1.0/
+		count(distinct case when el.event_name = 'view' then el.client_id end) conv
+from webevents.event_log el
+group by 1
+------------------------------------------------- 
+-- запрос, который выведет коверсию из события addtocart в transaction по дням, а также выведите общее число заказов
+select	
+    date_trunc('day',el.event_datetime)::date dt, -- дата события
+	count(distinct case when el.event_name = 'transaction' then el.client_id end)*1.0/
+		nullif(count(distinct case when el.event_name = 'addtocart' then el.client_id end),0) conv, -- конверсия из корзины в покупку
+	count(distinct el.order_id) orders_cnt -- количество заказов
+from webevents.event_log el
+group by 1
+order by 1 
+------------------------------------------------- 
+-- запрос, который выведет количество открытий товаров, добавлений в корзину, оформлений заказов в 
+-- разбивке по месяцам, а также кумулятивно эти метрики
+select
+    distinct date_trunc('month',el.event_datetime)::date dt, -- дата события
+    count( case when el.event_name = 'view' then el.client_id end) over (partition by date_trunc('month',el.event_datetime)::date ) as views, 
+    count( case when el.event_name = 'addtocart' then el.client_id end) over (partition by date_trunc('month',el.event_datetime)::date ) as carts,
+    count( case when el.event_name = 'transaction' then el.client_id end) over (partition by date_trunc('month',el.event_datetime)::date ) as orders, 
+    count( case when el.event_name = 'view' then el.client_id end) over (order by date_trunc('month',el.event_datetime)::date ) views_cumulative, 
+    count( case when el.event_name = 'addtocart' then el.client_id end) over (order by date_trunc('month',el.event_datetime)::date ) carts_cumulative,  
+    count( case when el.event_name = 'transaction' then el.client_id end) over (order by date_trunc('month',el.event_datetime)::date ) orders_cumulative
+from webevents.event_log el
+order by 1 desc
+
+------------------------------------------------- 
+------------------------------------------------- 
+-- LEAD/LAG
+-- среднее время между заказами клиента в нашем сервисе доставок
+with gaps as 
+(
+select 
+	s.cust_id,
+	lead(s.ship_date) over (partition by s.cust_id order by s.ship_date) - s.ship_date diff
+from 
+	shipping.shipment s
+)
+select 
+	c.cust_name,
+	avg(g.diff)
+from gaps g 
+left join shipping.customer c on g.cust_id = c.cust_id
+group by 1
