@@ -3,6 +3,9 @@ http://sql.skillfactory.ru:3000/
 demo4sql@skillfactory.ru
 K78IT0PWPvjIyp
 
+demo@skillfactory.ru
+demo4sql
+
 
 -- -- 1. Основы SQL -- -- 
 -----------------------------------------------------------------------------------------------------------------
